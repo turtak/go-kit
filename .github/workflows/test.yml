@@ -1,0 +1,59 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        go-version:
+          - stable
+
+    steps:
+    - name: Set up Go ${{ matrix.go-version }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 1
+
+    - name: Checking... staticcheck
+      uses: dominikh/staticcheck-action@v1
+      with:
+        version: "latest"
+
+    - name: Checking... golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: "latest"
+
+    - name: Checking... gosec
+      uses: securego/gosec@master
+      env:
+        GOROOT: ""
+      with:
+        args: -exclude-dir=examples ./...
+
+    - name: Run Test
+      run: |
+        set -e
+        go mod tidy
+        go test $(go list ./... | grep -v examples) -coverprofile=coverage.out
+        TOTAL_COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | grep -o '[0-9.]*')
+        export "TOTAL_COVERAGE=$TOTAL_COVERAGE"
+        echo "TOTAL_COVERAGE=$TOTAL_COVERAGE%"
+        echo "SUCCESS"
+
+    - name: Upload coverage to Coveralls
+      uses: coverallsapp/github-action@v2
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}  # Ensure you have this secret set in your repo
+        path-to-lcov: coverage.out
